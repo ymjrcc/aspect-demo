@@ -10,47 +10,50 @@ import {
 } from "@artela/aspect-libs";
 import {Protobuf} from "as-proto/assembly";
 
-/**
-
- */
-class Aspect implements IPreContractCallJP {
-    /**
-     *
-     * @param input
-     */
+class ConfigurableTimeRestrictedTradingAspect implements IPreContractCallJP {
     preContractCall(input: PreContractCallInput): void {
-        // read the throttle config from the properties and decode
+        // Get the current block timestamp
+        const blockTimeBytes = sys.hostApi.runtimeContext.get("block.header.timestamp");
+        const blockTime = Protobuf.decode<UintData>(blockTimeBytes, UintData.decode).data;
 
-        // get the contract address, from address and build the storage prefix
+        // Convert blockTime to Date object (assuming blockTime is in seconds)
+        const date = new Date(blockTime * 1000);
 
-        // load the current block timestamp
+        // Get configured trading days (1-7, where 1 is Monday and 7 is Sunday)
+        const allowedDays = sys.aspect.property.get<string>("allowedDays");
+        const allowedDaysArray = allowedDays.split(',').map<i32>((day) => parseInt(day.trim()) as i32);
 
-        // load last execution timestamp
+        // Get configured trading hours
+        const startHour = sys.aspect.property.get<i32>("startHour");
+        const endHour = sys.aspect.property.get<i32>("endHour");
 
-        // check if the throttle interval has passed, revert if not
+        // Check if it's an allowed day
+        const currentDay = date.getUTCDay() + 1; // getUTCDay() returns 0-6, we convert to 1-7
+        if (!allowedDaysArray.includes(currentDay)) {
+            sys.revert("Trading is not allowed on this day");
+        }
 
-        // check if the throttle limit has been reached, revert if so
+        // Get hour in UTC
+        const currentHour = date.getUTCHours();
 
-        // update the throttle state
+        // Check if it's within allowed hours
+        if (currentHour < startHour || currentHour >= endHour) {
+            sys.revert(`Trading is only allowed between ${startHour}:00 and ${endHour}:00 UTC`);
+        }
+
+        // If we've reached here, the trading is allowed
+        // You can add additional logic here if needed
     }
 
-    /**
-     * isOwner is the governance account implemented by the Aspect, when any of the governance operation
-     * (including upgrade, config, destroy) is made, isOwner method will be invoked to check
-     * against the initiator's account to make sure it has the permission.
-     *
-     * @param sender address of the transaction
-     * @return true if check success, false if check fail
-     */
     isOwner(sender: Uint8Array): boolean {
+        // Implement owner check logic if needed
         return false;
     }
 }
 
-// 2.register aspect Instance
-const aspect = new Aspect()
+// Register aspect Instance
+const aspect = new ConfigurableTimeRestrictedTradingAspect()
 entryPoint.setAspect(aspect)
 
-// 3.must export it
+// Export required functions
 export { execute, allocate }
-
